@@ -20,7 +20,6 @@
                 jQuery = require('jquery');
             }
             window.jQuery = jQuery;
-
             Handlebars = require('handlebars/runtime');
             MediumEditor = require('medium-editor');
             require('jquery-sortable');
@@ -200,7 +199,7 @@ this["MediumInsert"]["Templates"]["src/js/templates/images-toolbar.hbs"] = Handl
      * @return {void}
      */
 
-    function Core(el, options) {
+    function Core(el, options, SanitizeHtml) {
         var editor;
 
         this.el = el;
@@ -216,6 +215,7 @@ this["MediumInsert"]["Templates"]["src/js/templates/images-toolbar.hbs"] = Handl
         }
         this.options = $.extend(true, {}, defaults, options);
         this.options.editor = editor;
+        this.SanitizeHtml = SanitizeHtml;
 
         this._defaults = defaults;
         this._name = pluginName;
@@ -293,6 +293,10 @@ this["MediumInsert"]["Templates"]["src/js/templates/images-toolbar.hbs"] = Handl
 
     Core.prototype.getEditor = function () {
         return this.options.editor;
+    };
+
+    Core.prototype.getSanitizeHtml = function () {
+        return this.SanitizeHtml;
     };
 
     /**
@@ -804,6 +808,8 @@ this["MediumInsert"]["Templates"]["src/js/templates/images-toolbar.hbs"] = Handl
             var that = this,
                 textareaId;
 
+            var SanitizeHtml = require('sanitize-html');
+
             if ($(that).is('textarea')) {
                 textareaId = $(that).attr('medium-editor-textarea-id');
                 that = $(that).siblings('[medium-editor-textarea-id="' + textareaId + '"]').get(0);
@@ -811,7 +817,7 @@ this["MediumInsert"]["Templates"]["src/js/templates/images-toolbar.hbs"] = Handl
 
             if (!$.data(that, 'plugin_' + pluginName)) {
                 // Plugin initialization
-                $.data(that, 'plugin_' + pluginName, new Core(that, options));
+                $.data(that, 'plugin_' + pluginName, new Core(that, options, SanitizeHtml));
                 $.data(that, 'plugin_' + pluginName).init();
             } else if (typeof options === 'string' && $.data(that, 'plugin_' + pluginName)[options]) {
                 // Method call
@@ -1204,32 +1210,45 @@ this["MediumInsert"]["Templates"]["src/js/templates/images-toolbar.hbs"] = Handl
 
     Embeds.prototype.parseUrl = function (url, pasted) {
         var html;
+        
+        url = this.core.getSanitizeHtml()(url, {
+            allowedTags: this.core.getSanitizeHtml().defaults.allowedTags.concat([ 'img', 'iframe', 'figure', 'h1', 'h2' ]),
+            nonTextTags: [ 'style', 'script', 'textarea', 'noscript' ],        
+            allowedAttributes: false
+        });
 
-        if (!(new RegExp(['youtube', 'youtu.be', 'vimeo', 'instagram', 'twitter', 'facebook'].join('|')).test(url))) {
-            $.proxy(this, 'convertBadEmbed', url)();
-            return false;
-        }
+        console.log(url);
 
-        html = url.replace(/\n?/g, '')
-            .replace(/^((http(s)?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/(watch\?v=|v\/)?)([a-zA-Z0-9\-_]+)(.*)?$/, '<div class="video video-youtube"><iframe width="420" height="315" src="//www.youtube.com/embed/$7" frameborder="0" allowfullscreen></iframe></div>')
-            .replace(/^https?:\/\/vimeo\.com(\/.+)?\/([0-9]+)$/, '<div class="video video-vimeo"><iframe src="//player.vimeo.com/video/$2" width="500" height="281" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe></div>')
-            .replace(/^https:\/\/twitter\.com\/(\w+)\/status\/(\d+)\/?$/, '<blockquote class="twitter-tweet" align="center" lang="en"><a href="https://twitter.com/$1/statuses/$2"></a></blockquote><script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>')
-            .replace(/^(https:\/\/www\.facebook\.com\/(.*))$/, '<script src="//connect.facebook.net/en_US/sdk.js#xfbml=1&amp;version=v2.2" async></script><div class="fb-post" data-href="$1"><div class="fb-xfbml-parse-ignore"><a href="$1">Loading Facebook post...</a></div></div>')
-            .replace(/^https?:\/\/instagram\.com\/p\/(.+)\/?$/, '<span class="instagram"><iframe src="//instagram.com/p/$1/embed/" width="612" height="710" frameborder="0" scrolling="no" allowtransparency="true"></iframe></span>');
+        if(url!=""){
 
-        if (this.options.storeMeta) {
-            html += '<div class="medium-insert-embeds-meta"><script type="text/json">' + JSON.stringify({}) + '</script></div>';
-        }
+            if (!(new RegExp(['youtube', 'youtu.be', 'vimeo', 'instagram', 'twitter', 'facebook'].join('|')).test(url))) {
+                $.proxy(this, 'convertBadEmbed', url)();
+                return false;
+            }
 
-        if ((/<("[^"]*"|'[^']*'|[^'">])*>/).test(html) === false) {
-            $.proxy(this, 'convertBadEmbed', url)();
-            return false;
-        }
+            html = url.replace(/\n?/g, '')
+                .replace(/^((http(s)?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/(watch\?v=|v\/)?)([a-zA-Z0-9\-_]+)(.*)?$/, '<div class="video video-youtube"><iframe width="420" height="315" src="//www.youtube.com/embed/$7" frameborder="0" allowfullscreen></iframe></div>')
+                .replace(/^https?:\/\/vimeo\.com(\/.+)?\/([0-9]+)$/, '<div class="video video-vimeo"><iframe src="//player.vimeo.com/video/$2" width="500" height="281" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe></div>')
+                .replace(/^https:\/\/twitter\.com\/(\w+)\/status\/(\d+)\/?$/, '<blockquote class="twitter-tweet" align="center" lang="en"><a href="https://twitter.com/$1/statuses/$2"></a></blockquote><script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>')
+                .replace(/^(https:\/\/www\.facebook\.com\/(.*))$/, '<script src="//connect.facebook.net/en_US/sdk.js#xfbml=1&amp;version=v2.2" async></script><div class="fb-post" data-href="$1"><div class="fb-xfbml-parse-ignore"><a href="$1">Loading Facebook post...</a></div></div>')
+                .replace(/^https?:\/\/instagram\.com\/p\/(.+)\/?$/, '<span class="instagram"><iframe src="//instagram.com/p/$1/embed/" width="612" height="710" frameborder="0" scrolling="no" allowtransparency="true"></iframe></span>');
 
-        if (pasted) {
-            this.embed(html, url);
+            if (this.options.storeMeta) {
+                html += '<div class="medium-insert-embeds-meta"><script type="text/json">' + JSON.stringify({}) + '</script></div>';
+            }
+
+            if ((/<("[^"]*"|'[^']*'|[^'">])*>/).test(html) === false) {
+                $.proxy(this, 'convertBadEmbed', url)();
+                return false;
+            }
+
+            if (pasted) {
+                this.embed(html, url);
+            } else {
+                this.embed(html);
+            }
         } else {
-            this.embed(html);
+            this.embed("<p></p>");
         }
     };
 
